@@ -101,6 +101,8 @@ class Ally(Character):
         if self.is_alive():
             if all_enemy_locations:
                 print('Who do you attack?')
+                print('"0", "1", "2", or "3" for the corresponding enemy position')
+                print([player.name for player in players if player.team == 2])
                 target_input = None
                 while target_input is None:
                     target_input = input('>')
@@ -169,8 +171,8 @@ class Battle:
 
     def run(self):
         """Makes the battle loop while it's not over"""
-        print(f'{player.name for player in self.players if player.team == 1} vs '
-              f'{player.name for player in self.players if player.team == 2}')
+        print(f'{[player.name for player in self.players if player.team == 2]} appeared!')
+        dialogue_input()
         # Empty print statements are to separate texts in the console
         # To improve readability during the program's running
         for player in self.players:
@@ -181,7 +183,7 @@ class Battle:
             if acting_player.is_alive():
                 print(f'{acting_player.name}\'s turn')
                 acting_player.act(self.players)
-                print()
+                dialogue_input()
                 for player in self.players:
                     if player.is_alive():
                         print(f'{player.name} LV: {player.level}')
@@ -203,6 +205,7 @@ if __name__ == '__main__':
     name_input = input('>')
 
     PC = Ally(name=name_input, hp=20, max_hp=20, attack=4, speed=5)
+    print('press enter to move to the next line of text')
     print('You wake in your bed.')
     dialogue_input()
     print('You decide to get onto your computer.')
