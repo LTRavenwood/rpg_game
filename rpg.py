@@ -3,7 +3,7 @@
 # Import Statements----------------------------------------------------------------------------------------------------
 from dataclasses import dataclass, field
 from queue import PriorityQueue
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import random
 import time
 import sys
@@ -22,6 +22,7 @@ def blocking_input(acceptable_responses: [str]) -> str:
 
 
 def dialogue_input():
+    """takes input to pass on the dialogue"""
     text_input = None
     while text_input is None:
         text_input = blocking_input([''])
@@ -30,18 +31,16 @@ def dialogue_input():
     return text_input
 
 
-class Direction:
-    def __init__(self, direction: str, directions_used: List):
-        self.direction = direction
-        self.directions_used = directions_used
-
-    def choose_direction(self):
-        direction = blocking_input(['n', 's', 'e', 'w'])
-        self.directions_used.append(direction)
-        if direction in self.directions_used:
-            print('You already went that way')
+def show_next_turn():
+    """Returns who will move next in the battle queue"""
+    battle_next_turn = Battle.battle_queue[0]
+    print(str(battle_next_turn) + 'will move next!')
 
 
+inventory: Dict = {}
+
+
+# Item Class------------------------------------------------------------------------------------------------------------
 class Item:
     def __init__(self,
                  name: str,
@@ -49,8 +48,43 @@ class Item:
         self.name = name
         self.hp_restore = hp_restore
 
-    def use_item(self, player):
-        player.hp += min(player.max_hp, self.hp_restore)
+    def use_item(self, player: Character) -> float:
+        """Uses the item on a player, returning the new HP value for the player
+
+        :param player: Player using the item
+        :return: New HP value for player (Player object is NOT updated)
+        """
+        player.hp += min(float(self.hp_restore), player.max_hp)
+        return player.hp
+
+
+# Level Class-----------------------------------------------------------------------------------------------------------
+class Level:
+    level: int
+    player: Character
+    enemy: Enemy
+    exp_earned: int
+
+    def add_exp(self):
+        exp_earned = enemy.exp_on_death
+        for player in players:
+            if player.team == 1:
+                player.exp += exp_earned
+            return player.exp
+
+    def level_up(self):
+        if player.exp >= player.level_exp:
+            player.level += 1
+            player.max_hp *= player.leveling_scale*1.0
+            player.hp = player.max_hp
+            player.base_mp *= player.leveling_scale*0.3
+            player.mp = player.base_mp
+            player.base_attack *= leveling_scale*0.45
+            player.exp -= player.level_exp
+            player.level_exp *= player.leveling_scale*2.0
+        return player.level, player.max_hp, player.hp, player.base_mp, player.mp, player.base_attack, player.exp, \
+            player.level_exp
+
 
 # Character class-------------------------------------------------------------------------------------------------------
 class Character:
@@ -59,21 +93,33 @@ class Character:
                  name: str,
                  hp: float,
                  max_hp: float,
+                 mp: float,
+                 base_mp: float,
                  attack: float,
+                 base_attack: float,
                  speed: float,
+                 level: int,
                  exp: int,
                  level_exp: int,
+                 leveling_scale: float,
+                 exp_on_death: int,
                  team: int):
 
         self.name = name
         self.hp = hp
         self.max_hp = max_hp
+        self.mp = mp
+        self.base_mp = base_mp
         self.attack = attack
+        self.base_attack = base_attack
         self.speed = speed
+        self.level = level
         self.team = team
         self.exp = exp
         self.level_exp = level_exp
-        self.level = 1
+        self.leveling_scale = leveling_scale
+        self.exp_on_death = exp_on_death
+        self.is_blocking = False
 
         """:param max_hp: hp of an unharmed player
         :param level: level of the player, 1-100 eventually
@@ -88,34 +134,35 @@ class Character:
         """returns true if the player is an ally"""
         return other_player.team == self.team
 
-    def deal_damage(self, other_player: 'Character'):
+    def deal_damage(self, other_player: 'Character', multiplier: float):
         """The base method for dealing damage to an enemy player
         :param other_player: target of damage"""
         if other_player.is_alive():
-            other_player.hp -= self.attack
+            if other_player.is_blocking:
+                other_player.hp -= self.base_attack * 0.5
+                other_player.is_blocking = False
+            else:
+                other_player.hp -= self.base_attack * 1.0
             print(f'{self.name} attacked {other_player.name}')
         return other_player
 
+    def show_next_turn(self):
+        """Returns who will move next in the battle queue"""
+        print(str(self.battle_queue[1]) + 'will move next!')
+
     def get_all_enemies(self, players: List['Character']) -> List[int]:
-        """returns the location of all enemy players in a list"""
         return [
             index for index, player in enumerate(players)
-            if not self.is_ally(player) and player.is_alive()
+            if player.is_alive() and not player.is_ally(self)
         ]
 
     def act(self, players: List):
-        item = Item
         all_enemy_locations = self.get_all_enemies(players)
         if self.is_alive():
-            if item in inventory:
-                for item in inventory:
-                    Item.use_item(item, self)
-            else:
-                print('No items to use')
             if all_enemy_locations:
                 targeted_index = all_enemy_locations[0]
                 targeted_player = players[targeted_index]
-                damaged_player = self.deal_damage(targeted_player)
+                damaged_player = self.deal_damage(targeted_player, 1.0)
                 players[targeted_index] = damaged_player
 
         return players
@@ -126,37 +173,17 @@ class Ally(Character):
                  name: str,
                  hp: float,
                  max_hp: float,
+                 mp: float,
+                 base_mp: float,
                  attack: float,
+                 base_attack: float,
                  speed: float,
+                 level: int,
                  exp: int,
-                 level_exp: int):
-        super().__init__(name, hp, max_hp, attack, speed, exp, level_exp, team=1)
-
-    def fight_input(self):
-        item = Item
-        print('What will you do?')
-        print('[f]: fight, [r]: run, [i]: item')
-        fight_output = None
-        while fight_output is None:
-            fight_output = blocking_input(['f', 'r', 'i'])
-            if fight_output == 'f':
-                pass
-            elif fight_output == 'r':
-                print('You can]\'t escape!')
-                fight_output = None
-            elif fight_output == 'i':
-                if item in inventory:
-                    for item in inventory:
-                        print(f'Do you want to use {item}')
-                        item_input = blocking_input(['y', 'n'])
-                        if item_input == 'y':
-                            Item.use_item(item, self)
-                        elif item_input == 'n':
-                            fight_output = None
-
-                else:
-                    print('Inventory is empty')
-                    fight_output = None
+                 level_exp: int,
+                 leveling_scale: float):
+        super().__init__(name, hp, max_hp, mp, base_mp, attack, base_attack, speed, level, exp, level_exp,
+                         leveling_scale, exp_on_death=0, team=1)
 
     def act(self, players: List):
         all_enemy_locations = self.get_all_enemies(players)
@@ -171,7 +198,7 @@ class Ally(Character):
                     try:
                         targeted_index = all_enemy_locations[int(target_input)]
                         targeted_player = players[targeted_index]
-                        damaged_player = self.deal_damage(targeted_player)
+                        damaged_player = self.deal_damage(targeted_player, 1.0)
                         players[targeted_index] = damaged_player
                     except ValueError:
                         print('That is not a valid target')
@@ -188,20 +215,36 @@ class Enemy(Character):
                  name: str,
                  hp: float,
                  max_hp: float,
+                 mp: float,
+                 base_mp: float,
                  attack: float,
+                 base_attack: float,
                  speed: float,
+                 level: int,
                  exp: int,
+                 exp_on_death: int,
                  level_exp: int):
-        super().__init__(name, hp, max_hp, attack, speed, exp, level_exp, team=2)
+        super().__init__(name,
+                         hp,
+                         max_hp,
+                         mp,
+                         base_mp,
+                         attack,
+                         base_attack,
+                         speed,
+                         level,
+                         exp,
+                         exp_on_death,
+                         level_exp,
+                         team=2)
 
     def act(self, players: List):
-        item = Item
         all_enemy_locations = self.get_all_enemies(players)
         if self.is_alive():
             if all_enemy_locations:
                 targeted_index = random.choice(all_enemy_locations)
                 targeted_player = players[targeted_index]
-                damaged_player = self.deal_damage(targeted_player)
+                damaged_player = self.deal_damage(targeted_player, 1.0)
                 players[targeted_index] = damaged_player
 
         return players
@@ -237,23 +280,6 @@ class Battle:
         """true if the battle is over"""
         return self.battle_queue.empty()
 
-    def level_up(self):
-        exp_gain = 200
-        for player in self.players:
-            if player.team == 1:
-                player.exp += exp_gain
-                print(f'{player.name} received {exp_gain} experience points!')
-                if player.exp == player.level_exp:
-                    print(f'{player.name} leveled up!')
-                    player.level += 1
-                    player.max_hp += 2
-                    player.hp = player.max_hp
-                    player.attack += 1
-                    player.speed += 1
-                    player.exp = 0
-                    player.level_exp *= 2
-                    print(f'{player.name}: {player.level}')
-
     def run(self):
         """Makes the battle loop while it's not over"""
         print(f'{[player.name for player in self.players if player.team == 2]} appeared!')
@@ -267,16 +293,13 @@ class Battle:
             acting_player, current_game_time = self.get_from_queue()
             if acting_player.is_alive():
                 print(f'{acting_player.name}\'s turn')
-                if acting_player.team == 1:
-                    acting_player.fight_input()
-                    acting_player.act(self.players)
-                    dialogue_input()
-                    for player in self.players:
-                        if player.is_alive():
-                            print(f'{player.name} LV: {player.level}')
-                            print(f'HP: {int(player.hp)}/{player.max_hp}')
-                    if acting_player.is_alive and acting_player.get_all_enemies(self.players):
-                        self.add_into_queue(acting_player, current_game_time)
+                acting_player.act(self.players)
+                for player in self.players:
+                    if player.is_alive():
+                        print(f'{player.name} LV: {player.level}')
+                        print(f'HP: {int(player.hp)}/{player.max_hp}')
+                if acting_player.is_alive and acting_player.get_all_enemies(self.players):
+                    self.add_into_queue(acting_player, current_game_time)
             else:
                 print(f'{acting_player.name} is dead')
             print()
@@ -291,41 +314,50 @@ class Battle:
 
 # Main Loop------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
-    inventory = []
-    debugger = False
-    if debugger is True:
-        names = {'1': 'Tyler', '2': 'Alex', '3': 'Robert'}
-        print('Debugger mode...')
-        print('Welcome debugger!')
-        print('1: Tyler, 2: Alex, 3: Robert')
-        print('Which debugger are you?')
-        name = None
-        while name is None:
-            name_input = input('>')
-            name = names.get(name_input)
-        print(f'Welcome {name}')
-    else:
-        print('What is your name?')
-        name = input('>')
-    PC = Ally(name=name, hp=20, max_hp=20, attack=4, speed=5, exp=0, level_exp=200)
-    print('press enter to move to the next line of text')
-    print('You wake in your bed.')
-    dialogue_input()
-    print('You decide to get onto your computer.')
-    dialogue_input()
-    print('Suddenly, as you turn the computer on, you\'re transported to an unfamiliar world.')
-    dialogue_input()
-    print('"Welcome to the Algorithm." You hear a voice saying out of nowhere.')
-    dialogue_input()
-    print('Suddenly an apparition appears and attacks!')
-    anime_male = Enemy(name='Anime Male', hp=20, max_hp=20, attack=3, speed=5, exp=0, level_exp=200)
-    battle = Battle(players=[PC, anime_male])
-    battle.run()
-    potion = Item(name='potion', hp_restore=10)
-    print('You found a potion.')
-    inventory.append(potion)
-    print('Thank you for playing the demo!')
-    time.sleep(3)
+    print('Anime RPG')
+    print('[s]: start')
+    print('[q]: quit')
+    start_input = blocking_input(['s', 'q'])
+    if start_input == 's':
+        debugger = True
+        if debugger is True:
+            names = {'1': 'Tyler', '2': 'Alex', '3': 'Robert'}
+            print('Debugger mode...')
+            print('Welcome debugger!')
+            print('1: Tyler, 2: Alex, 3: Robert')
+            print('Which debugger are you?')
+            name = None
+            while name is None:
+                name_input = input('>')
+                name = names.get(name_input)
+            print(f'Welcome {name}')
+        else:
+            print('What is your name?')
+            name = input('>')
+        PC = Ally(name=name, hp=20, max_hp=20, mp=10, base_mp=10, attack=4, base_attack=4, speed=5, level=1, exp=0,
+                  level_exp=200, leveling_scale=2.0)
+        anime_male = Enemy(name='Anime Male', hp=20, max_hp=20, mp=10, base_mp=10, attack=3, base_attack=3, speed=5,
+                           level=1, exp=0, level_exp=200)
+        battle = Battle(players=[PC, anime_male])
+        battle.run()
+        potion = Item(name='potion', hp_restore=10)
+        print('You found a potion.')
+        inventory[potion.name] = potion
+        aqua = Ally(name='Aqua', hp=22, max_hp=22, mp=10, base_mp=10, attack=6, base_attack=6, speed=5, level=2, exp=0,
+                    level_exp=400)
+        krillin = Enemy(name='Krillin', hp=20, max_hp=20, mp=10, base_mp=10, attack=3, base_attack=3, speed=4,
+                        level=2, exp=0, level_exp=200)
+        yamcha = Enemy(name='Yamcha', hp=21, max_hp=21, mp=10, base_mp=10, attack=4, base_attack=4, speed=3,
+                            level=2, exp=0, level_exp=200)
+        battledbz = Battle(players=[PC, aqua, krillin, yamcha])
+        battledbz.run()
+        arimay = Ally(name='Arimay', hp=20, max_hp=20, attack=3, speed=6, exp=0, level_exp=200)
+
+    elif start_input == 'q':
+        print('Thank you for Playing!')
+        time.sleep(3)
+        sys.exit()
+
 
 
 
